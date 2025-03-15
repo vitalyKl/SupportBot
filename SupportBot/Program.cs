@@ -7,42 +7,52 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types;
 using TelegramEmailBot.Services;
 using TelegramEmailBot.Handlers;
+using Microsoft.Extensions.Hosting;
 
 namespace SupportBot
 {
     class Program
     {
-        // Замените строки ниже на ваши данные
-        private static readonly string TelegramToken = "8011060591:AAEMe8FQMU6umojd4PyguEppE76VyH90MAo";
-
-        static async Task Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            using CancellationTokenSource cts = new CancellationTokenSource();
-            var botClient = new TelegramBotClient(TelegramToken);
-            var me = await botClient.GetMe(cts.Token);
-            Console.WriteLine($"Бот запущен: {me.FirstName} (ID: {me.Id})");
+            // Создание хоста
+            var host = Host.CreateDefaultBuilder(args)
+                .ConfigureAppConfiguration((context, config) =>
+                {
+                    config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                })
+                .ConfigureServices((context, services) =>
+                {
+                    var configuration = context.Configuration;
 
-            // Создаем сервисы
-            var companyBindingService = new CompanyBindingService(); // Привязки сохраняются в CSV (например, "company_bindings.csv")
-            var companyListService = new CompanyListService("companies.csv"); // Список компаний из отдельного CSV
-            var emailSender = new EmailSender("fmonitoringbot@gmail.com", "aoru xwsk clwd lfjm", "support@fmg24.by", companyBindingService);
-            // Передаем в группировщик также CompanyBindingService для проверки привязки
-            var groupingManager = new EmailGroupingManager(emailSender, groupingDelaySeconds: 10, companyBindingService);
-            var messageProcessor = new TelegramMessageProcessor(TelegramToken);
+                    // Регистрируем опции, если захотите их далее использовать
+                    services.Configure<TelegramOptions>(configuration.GetSection("Telegram"));
+                    services.Configure<EmailOptions>(configuration.GetSection("Email"));
+                    services.Configure<FileOptions>(configuration.GetSection("Files"));
 
-            // Передаем зависимости в обработчик обновлений
-            var updateHandler = new MyUpdateHandler(messageProcessor, groupingManager, companyBindingService, companyListService);
+                    int groupingDelaySeconds = configuration.GetValue<int>("GroupingDelaySeconds", 10);
 
-            var receiverOptions = new ReceiverOptions
-            {
-                AllowedUpdates = new UpdateType[] { UpdateType.Message, UpdateType.CallbackQuery }
-            };
+                    // Регистрируем TelegramBotClient
+                    string telegramToken = configuration.GetSection("Telegram").GetValue<string>("Token");
+                    services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramToken));
 
-            botClient.StartReceiving(updateHandler, receiverOptions, cts.Token);
+                    // Регистрируем наши сервисы
+                    services.AddSingleton<CompanyBindingService>();
+                    services.AddSingleton<CompanyListService>();
+                    services.AddSingleton<TelegramMessageProcessor>();
+                    services.AddSingleton<EmailSender>();
+                    services.AddSingleton<EmailGroupingManager>(sp =>
+                    {
+                        var emailSender = sp.GetRequiredService<EmailSender>();
+                        var companyBindingService = sp.GetRequiredService<CompanyBindingService>();
+                        return new EmailGroupingManager(emailSender, groupingDelaySeconds, companyBindingService);
+                    });
+                    services.AddSingleton<MyUpdateHandler>();
+                    services.AddHostedService<BotHostedService>();  // Наш Hosted Service для бота
+                })
+                .Build();
 
-            Console.WriteLine("Бот работает. Нажмите любую клавишу для завершения...");
-            Console.ReadKey();
-            cts.Cancel();
+            await host.RunAsync();
         }
     }
 }
