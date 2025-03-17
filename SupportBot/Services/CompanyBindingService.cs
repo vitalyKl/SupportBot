@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using SupportBot.Services.Security;
+using TelegramEmailBot.Services.Security;
 
 namespace TelegramEmailBot.Services
 {
@@ -11,6 +13,7 @@ namespace TelegramEmailBot.Services
         private readonly string _filePath;
         private readonly Dictionary<long, string> _bindings = new();
         private readonly object _lock = new();
+        private readonly string _encryptionKey = EncryptionSettings.EncryptionKey;
 
         public CompanyBindingService(string filePath)
         {
@@ -22,24 +25,39 @@ namespace TelegramEmailBot.Services
         {
             if (!File.Exists(_filePath))
                 return;
+
             try
             {
                 var lines = File.ReadAllLines(_filePath, Encoding.UTF8);
-                foreach (var line in lines)
+                bool migrated = false;
+                foreach (var line in lines.Where(line => !string.IsNullOrWhiteSpace(line)))
                 {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
                     var parts = line.Split(';');
                     if (parts.Length < 2)
                         continue;
                     if (long.TryParse(parts[0].Trim(), out long senderId))
                     {
-                        string company = parts[1].Trim();
+                        string company;
+                        try
+                        {
+                            company = EncryptionHelper.DecryptString(parts[1].Trim(), _encryptionKey);
+                        }
+                        catch (Exception)
+                        {
+                            // Если дешифрование провалилось, предполагаем, что данные открыты
+                            company = parts[1].Trim();
+                            migrated = true;
+                        }
                         lock (_lock)
                         {
                             _bindings[senderId] = company;
                         }
                     }
+                }
+                // Если найдены незашифрованные данные, перезапишем файл в зашифрованном виде
+                if (migrated)
+                {
+                    SaveBindings();
                 }
             }
             catch (Exception ex)
@@ -57,7 +75,8 @@ namespace TelegramEmailBot.Services
                 {
                     foreach (var kvp in _bindings)
                     {
-                        lines.Add($"{kvp.Key};{kvp.Value}");
+                        string encrypted = EncryptionHelper.EncryptString(kvp.Value, _encryptionKey);
+                        lines.Add($"{kvp.Key};{encrypted}");
                     }
                 }
                 File.WriteAllLines(_filePath, lines, Encoding.UTF8);
