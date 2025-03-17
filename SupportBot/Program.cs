@@ -8,6 +8,9 @@ using Telegram.Bot.Types;
 using TelegramEmailBot.Services;
 using TelegramEmailBot.Handlers;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using SupportBot.Models;
 
 namespace SupportBot
 {
@@ -28,7 +31,7 @@ namespace SupportBot
                     // Регистрируем опции, если захотите их далее использовать
                     services.Configure<TelegramOptions>(configuration.GetSection("Telegram"));
                     services.Configure<EmailOptions>(configuration.GetSection("Email"));
-                    services.Configure<FileOptions>(configuration.GetSection("Files"));
+                    services.Configure<Models.FileOptions>(configuration.GetSection("Files"));
 
                     int groupingDelaySeconds = configuration.GetValue<int>("GroupingDelaySeconds", 10);
 
