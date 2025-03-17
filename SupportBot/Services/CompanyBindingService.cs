@@ -1,43 +1,30 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace TelegramEmailBot.Services
 {
-    /// <summary>
-    /// Реализует хранение привязок (SenderID -> Название компании)
-    /// в CSV‑файле. Каждый элемент хранится в виде: senderId;companyName
-    /// </summary>
     public class CompanyBindingService
     {
         private readonly string _filePath;
-        private readonly Dictionary<long, string> _bindings;
-        private readonly object _lock = new object();
+        private readonly Dictionary<long, string> _bindings = new();
+        private readonly object _lock = new();
 
-        /// <summary>
-        /// При инициализации загружаются привязки из файла (если он существует).
-        /// </summary>
-        /// <param name="filePath">Путь к CSV-файлу (по умолчанию "company_bindings.csv")</param>
-        public CompanyBindingService(string filePath = "company_bindings.csv")
+        public CompanyBindingService(string filePath)
         {
-            _filePath = filePath;
-            _bindings = new Dictionary<long, string>();
+            _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
             LoadBindings();
         }
 
-        /// <summary>
-        /// Загружает привязки из файла.
-        /// Формат каждой строки: senderId;companyName
-        /// </summary>
         private void LoadBindings()
         {
             if (!File.Exists(_filePath))
                 return;
-
             try
             {
-                var lines = File.ReadAllLines(_filePath);
+                var lines = File.ReadAllLines(_filePath, Encoding.UTF8);
                 foreach (var line in lines)
                 {
                     if (string.IsNullOrWhiteSpace(line))
@@ -61,10 +48,6 @@ namespace TelegramEmailBot.Services
             }
         }
 
-        /// <summary>
-        /// Сохраняет текущие привязки в CSV‑файл.
-        /// Пере-записывается весь файл.
-        /// </summary>
         private void SaveBindings()
         {
             try
@@ -85,9 +68,6 @@ namespace TelegramEmailBot.Services
             }
         }
 
-        /// <summary>
-        /// Пытается получить название компании для данного senderId.
-        /// </summary>
         public bool TryGetCompany(long senderId, out string company)
         {
             lock (_lock)
@@ -96,9 +76,6 @@ namespace TelegramEmailBot.Services
             }
         }
 
-        /// <summary>
-        /// Привязывает отправителя (senderId) к указанной компании и сохраняет изменения.
-        /// </summary>
         public void BindCompany(long senderId, string company)
         {
             lock (_lock)

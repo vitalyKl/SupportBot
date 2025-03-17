@@ -1,48 +1,55 @@
 ﻿using System;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Telegram.Bot;
-using Telegram.Bot.Types;
 using TelegramEmailBot.Models;
 using TelegramEmailBot.Services;
+using SupportBot.Tests;
 using Xunit;
 using Moq;
-using Moq.Protected;
+using Telegram.Bot.Types;
 
 namespace SupportBot.Tests
 {
     public class TelegramMessageProcessorTests
     {
         [Fact]
-        public async Task ProcessMessageAsync_ShouldReturnForwardedMessage_WithCorrectText()
+        public async Task ProcessMessageAsync_Returns_ForwardedMessage_With_Correct_Data()
         {
             // Arrange
-            string fakeToken = "fake-token";
+            var fakeToken = "fake-token";
             var processor = new TelegramMessageProcessor(fakeToken);
 
-            // Создаем минимальное сообщение для теста
-            var testMessage = new Message
+            var fakeMessage = new FakeIncomingMessage
             {
                 MessageId = 123,
                 Date = DateTime.Now,
                 Text = "Test message",
-                ForwardFrom = new User { Id = 456, FirstName = "Test", LastName = "User", Username = "testuser" }
+                Caption = "Test caption",
+                Contact = null,
+                Photo = Array.Empty<Telegram.Bot.Types.PhotoSize>(),
+                Document = null,
+                ForwardFrom = new User
+                {
+                    Id = 456,
+                    FirstName = "Test",
+                    LastName = "User",
+                    Username = "testuser"
+                },
+                ForwardSenderName = "ForwardedTestUser"
             };
 
-            // Создаем мок TelegramBotClient, который вернет пустой файл при вызове GetFileAsync
-            var mockBotClient = new Mock<ITelegramBotClient>();
-            // Можно добавить Setup, если метод GetFileAsync вызывается, но для базового теста текст не зависит от скачивания файла.
-            // ...
+            var fakeBotClient = new Mock<ITelegramBotClient>();
 
             // Act
-            ForwardedMessage result = await processor.ProcessMessageAsync(mockBotClient.Object, testMessage, CancellationToken.None);
+            ForwardedMessage forwarded = await processor.ProcessMessageAsync(fakeBotClient.Object, fakeMessage, CancellationToken.None);
 
             // Assert
-            Assert.NotNull(result);
-            Assert.Equal("Test message", result.Text);
-            Assert.Contains("Test", result.SenderInfo);
-            Assert.Equal(456, result.SenderId);
+            Assert.NotNull(forwarded);
+            Assert.Equal(123, forwarded.MessageId);
+            Assert.Equal("Test message", forwarded.Text);
+            Assert.Contains("Test", forwarded.SenderInfo);
+            Assert.Equal(456, forwarded.SenderId);
         }
     }
 }

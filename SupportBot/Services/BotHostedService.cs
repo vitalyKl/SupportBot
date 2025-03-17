@@ -12,7 +12,7 @@ namespace TelegramEmailBot.Services
     {
         private readonly ITelegramBotClient _botClient;
         private readonly MyUpdateHandler _updateHandler;
-        private CancellationTokenSource _cts;
+        private CancellationTokenSource _cts = new();
 
         public BotHostedService(ITelegramBotClient botClient, MyUpdateHandler updateHandler)
         {
@@ -23,7 +23,7 @@ namespace TelegramEmailBot.Services
         public Task StartAsync(CancellationToken cancellationToken)
         {
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var receiverOptions = new ReceiverOptions { AllowedUpdates = new UpdateType[] { UpdateType.Message, UpdateType.CallbackQuery } };
+            var receiverOptions = new ReceiverOptions { AllowedUpdates = new[] { UpdateType.Message, UpdateType.CallbackQuery } };
             _botClient.StartReceiving(_updateHandler, receiverOptions, _cts.Token);
             return Task.CompletedTask;
         }

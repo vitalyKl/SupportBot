@@ -9,15 +9,14 @@ namespace TelegramEmailBot.Services
     public class CompanyListService
     {
         private readonly string _filePath;
-        private readonly object _lock = new object();
+        private readonly object _lock = new();
 
         public CompanyListService(string filePath = "companies.csv")
         {
             _filePath = filePath;
-            // Если файла нет, создаём его с начальными значениями
             if (!File.Exists(_filePath))
             {
-                var defaultCompanies = new List<string> { };
+                var defaultCompanies = new List<string> { "Компания А", "Компания Б", "Компания В" };
                 File.WriteAllLines(_filePath, defaultCompanies, Encoding.UTF8);
             }
         }
@@ -29,10 +28,9 @@ namespace TelegramEmailBot.Services
                 lock (_lock)
                 {
                     var lines = File.ReadAllLines(_filePath, Encoding.UTF8);
-                    return lines
-                        .Where(line => !string.IsNullOrWhiteSpace(line))
-                        .Select(line => line.Trim())
-                        .ToList();
+                    return lines.Where(line => !string.IsNullOrWhiteSpace(line))
+                                .Select(line => line.Trim())
+                                .ToList();
                 }
             }
             catch (Exception ex)
@@ -48,15 +46,12 @@ namespace TelegramEmailBot.Services
                 return;
             lock (_lock)
             {
-                // Получаем текущий список компаний
                 var companies = GetCompanies();
-                // Если такой компании ещё нет (игнорируя регистр)
                 if (!companies.Contains(company, StringComparer.OrdinalIgnoreCase))
                 {
                     try
                     {
-                        // Дописываем новую компанию в файл
-                        File.AppendAllLines(_filePath, new string[] { company }, Encoding.UTF8);
+                        File.AppendAllLines(_filePath, new[] { company }, Encoding.UTF8);
                         Console.WriteLine($"Компания '{company}' добавлена в список.");
                     }
                     catch (Exception ex)
