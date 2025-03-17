@@ -1,35 +1,26 @@
 ﻿using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
+using SupportBot.Services.Security;
+using TelegramEmailBot.Services.Security;
 
 namespace TelegramEmailBot.Services
 {
-    /// <summary>
-    /// Реализует хранение привязок (SenderID -> Название компании)
-    /// в CSV‑файле. Каждый элемент хранится в виде: senderId;companyName
-    /// </summary>
     public class CompanyBindingService
     {
         private readonly string _filePath;
-        private readonly Dictionary<long, string> _bindings;
-        private readonly object _lock = new object();
+        private readonly Dictionary<long, string> _bindings = new();
+        private readonly object _lock = new();
+        private readonly string _encryptionKey = EncryptionSettings.EncryptionKey;
 
-        /// <summary>
-        /// При инициализации загружаются привязки из файла (если он существует).
-        /// </summary>
-        /// <param name="filePath">Путь к CSV-файлу (по умолчанию "company_bindings.csv")</param>
-        public CompanyBindingService(string filePath = "company_bindings.csv")
+        public CompanyBindingService(string filePath)
         {
-            _filePath = filePath;
-            _bindings = new Dictionary<long, string>();
+            _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
             LoadBindings();
         }
 
-        /// <summary>
-        /// Загружает привязки из файла.
-        /// Формат каждой строки: senderId;companyName
-        /// </summary>
         private void LoadBindings()
         {
             if (!File.Exists(_filePath))
@@ -37,22 +28,36 @@ namespace TelegramEmailBot.Services
 
             try
             {
-                var lines = File.ReadAllLines(_filePath);
-                foreach (var line in lines)
+                var lines = File.ReadAllLines(_filePath, Encoding.UTF8);
+                bool migrated = false;
+                foreach (var line in lines.Where(line => !string.IsNullOrWhiteSpace(line)))
                 {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
                     var parts = line.Split(';');
                     if (parts.Length < 2)
                         continue;
                     if (long.TryParse(parts[0].Trim(), out long senderId))
                     {
-                        string company = parts[1].Trim();
+                        string company;
+                        try
+                        {
+                            company = EncryptionHelper.DecryptString(parts[1].Trim(), _encryptionKey);
+                        }
+                        catch (Exception)
+                        {
+                            // Если дешифрование провалилось, предполагаем, что данные открыты
+                            company = parts[1].Trim();
+                            migrated = true;
+                        }
                         lock (_lock)
                         {
                             _bindings[senderId] = company;
                         }
                     }
+                }
+                // Если найдены незашифрованные данные, перезапишем файл в зашифрованном виде
+                if (migrated)
+                {
+                    SaveBindings();
                 }
             }
             catch (Exception ex)
@@ -61,10 +66,6 @@ namespace TelegramEmailBot.Services
             }
         }
 
-        /// <summary>
-        /// Сохраняет текущие привязки в CSV‑файл.
-        /// Пере-записывается весь файл.
-        /// </summary>
         private void SaveBindings()
         {
             try
@@ -74,7 +75,8 @@ namespace TelegramEmailBot.Services
                 {
                     foreach (var kvp in _bindings)
                     {
-                        lines.Add($"{kvp.Key};{kvp.Value}");
+                        string encrypted = EncryptionHelper.EncryptString(kvp.Value, _encryptionKey);
+                        lines.Add($"{kvp.Key};{encrypted}");
                     }
                 }
                 File.WriteAllLines(_filePath, lines, Encoding.UTF8);
@@ -85,9 +87,6 @@ namespace TelegramEmailBot.Services
             }
         }
 
-        /// <summary>
-        /// Пытается получить название компании для данного senderId.
-        /// </summary>
         public bool TryGetCompany(long senderId, out string company)
         {
             lock (_lock)
@@ -96,9 +95,6 @@ namespace TelegramEmailBot.Services
             }
         }
 
-        /// <summary>
-        /// Привязывает отправителя (senderId) к указанной компании и сохраняет изменения.
-        /// </summary>
         public void BindCompany(long senderId, string company)
         {
             lock (_lock)

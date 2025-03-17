@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.13.35828.75 d17.13
+VisualStudioVersion = 17.13.35828.75
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SupportBot", "SupportBot\SupportBot.csproj", "{EF994E9B-4D11-4599-A4FA-12A348A7EA78}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SupportBot.Tests", "SupportBot.Tests\SupportBot.Tests.csproj", "{E334F43A-890F-459D-B132-AC655039BB65}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{EF994E9B-4D11-4599-A4FA-12A348A7EA78}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{EF994E9B-4D11-4599-A4FA-12A348A7EA78}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{EF994E9B-4D11-4599-A4FA-12A348A7EA78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E334F43A-890F-459D-B132-AC655039BB65}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E334F43A-890F-459D-B132-AC655039BB65}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E334F43A-890F-459D-B132-AC655039BB65}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E334F43A-890F-459D-B132-AC655039BB65}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -2,8 +2,8 @@
 {
     public class AttachmentData
     {
-        public string FileName { get; set; }
-        public byte[] FileBytes { get; set; }
-        public string MimeType { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public byte[] FileBytes { get; set; } = System.Array.Empty<byte>();
+        public string MimeType { get; set; } = string.Empty;
     }
 }

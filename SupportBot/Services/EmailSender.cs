@@ -20,9 +20,9 @@ namespace TelegramEmailBot.Services
 
         public EmailSender(string gmailUser, string gmailAppPassword, string recipientEmail, CompanyBindingService companyBindingService)
         {
-            _gmailUser = gmailUser;
-            _gmailAppPassword = gmailAppPassword;
-            _recipientEmail = recipientEmail;
+            _gmailUser = gmailUser ?? throw new ArgumentNullException(nameof(gmailUser));
+            _gmailAppPassword = gmailAppPassword ?? throw new ArgumentNullException(nameof(gmailAppPassword));
+            _recipientEmail = recipientEmail ?? throw new ArgumentNullException(nameof(recipientEmail));
             _companyBindingService = companyBindingService;
         }
 
@@ -31,7 +31,6 @@ namespace TelegramEmailBot.Services
             if (messages == null || messages.Count == 0)
                 throw new ArgumentException("Нет сообщений для отправки", nameof(messages));
 
-            // Если для первого сообщения установлена привязка (пример: компания), используем её название как тему.
             string subject;
             if (messages[0].SenderId.HasValue && _companyBindingService.TryGetCompany(messages[0].SenderId.Value, out string company))
             {
@@ -39,55 +38,40 @@ namespace TelegramEmailBot.Services
             }
             else
             {
-                // Если привязки нет, формируем стандартную тему.
-                if (messages.Count == 1)
-                {
-                    var firstLine = messages[0].SenderInfo?
-                        .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                        .FirstOrDefault() ?? "отправитель неизвестен";
-                    subject = $"Пересланное сообщение от {firstLine}";
-                }
-                else
-                {
-                    subject = $"Пересланные сообщения ({messages.Count})";
-                }
+                subject = messages.Count == 1
+                    ? $"Пересланное сообщение от {messages[0].SenderInfo.Split('\n')[0]}"
+                    : $"Пересланные сообщения ({messages.Count})";
             }
 
-            // Формирование единого тела письма: plain-текст и HTML.
             var plainBuilder = new StringBuilder();
             var htmlBuilder = new StringBuilder();
 
-            // Вывод информации об отправителе (берется из первого сообщения)
-            string senderInfo = messages[0].SenderInfo ?? string.Empty;
+            string senderInfo = messages[0].SenderInfo;
             plainBuilder.AppendLine("Отправитель:");
             plainBuilder.AppendLine(senderInfo);
             plainBuilder.AppendLine();
             htmlBuilder.AppendLine("<html><body style='font-family:Arial, sans-serif;'>");
             htmlBuilder.Append("<p><strong>Отправитель:</strong><br/>");
-            htmlBuilder.Append(WebUtility.HtmlEncode(senderInfo ?? string.Empty).Replace("\n", "<br/>"));
+            htmlBuilder.Append(WebUtility.HtmlEncode(senderInfo).Replace("\n", "<br/>"));
             htmlBuilder.AppendLine("</p><hr/>");
 
-            // Коллекции для встраивания изображений и добавления остальных вложений.
             var inlineImages = new List<(string ContentId, AttachmentData Data)>();
             var otherAttachments = new List<AttachmentData>();
 
             foreach (var msg in messages)
             {
-                // Если есть текст, добавляем его.
                 if (!string.IsNullOrEmpty(msg.Text))
                 {
-                    string encodedText = WebUtility.HtmlEncode(msg.Text ?? string.Empty).Replace("\n", "<br/>");
+                    string encodedText = WebUtility.HtmlEncode(msg.Text).Replace("\n", "<br/>");
                     htmlBuilder.AppendFormat("<p>{0}</p>", encodedText);
                     plainBuilder.AppendLine(msg.Text);
                     plainBuilder.AppendLine();
                 }
 
-                // Обработка вложений.
                 if (msg.Attachments != null && msg.Attachments.Any())
                 {
                     foreach (var att in msg.Attachments)
                     {
-                        // Если MIME-тип указывает на изображение, встраиваем его inline.
                         if (!string.IsNullOrEmpty(att.MimeType) && att.MimeType.StartsWith("image/"))
                         {
                             string contentId = Guid.NewGuid().ToString();
@@ -98,7 +82,6 @@ namespace TelegramEmailBot.Services
                         }
                         else
                         {
-                            // Остальные файлы (например, xlsx, pdf) добавляем как вложения.
                             otherAttachments.Add(att);
                             plainBuilder.AppendLine($"[вложение: {att.FileName}]");
                             plainBuilder.AppendLine();
@@ -112,7 +95,6 @@ namespace TelegramEmailBot.Services
             string plainBody = plainBuilder.ToString();
             string htmlBody = htmlBuilder.ToString();
 
-            // Создаем сообщение для отправки.
             MailMessage mailMessage = new MailMessage
             {
                 From = new MailAddress(_gmailUser),
@@ -122,10 +104,7 @@ namespace TelegramEmailBot.Services
             };
             mailMessage.To.Add(_recipientEmail);
 
-            // Создаем AlternateView для HTML-версии письма.
             AlternateView htmlView = AlternateView.CreateAlternateViewFromString(htmlBody, null, MediaTypeNames.Text.Html);
-
-            // Добавляем изображения как inline-ресурсы.
             foreach (var img in inlineImages)
             {
                 var ms = new MemoryStream(img.Data.FileBytes);
@@ -138,8 +117,6 @@ namespace TelegramEmailBot.Services
             }
             mailMessage.AlternateViews.Add(htmlView);
 
-            // ВАЖНО: Для остальных вложений (не изображений) задаем ContentDisposition.Inline = false,
-            // чтобы убедиться, что они прикреплены как файлы, а не отображаются inline.
             foreach (var att in otherAttachments)
             {
                 var ms = new MemoryStream(att.FileBytes);
@@ -148,7 +125,6 @@ namespace TelegramEmailBot.Services
                 mailMessage.Attachments.Add(attachment);
             }
 
-            // Отправляем письмо через SMTP (например, Gmail).
             using (var smtpClient = new SmtpClient("smtp.gmail.com", 587)
             {
                 Credentials = new NetworkCredential(_gmailUser, _gmailAppPassword),
