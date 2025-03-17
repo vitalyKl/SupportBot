@@ -12,21 +12,16 @@ namespace TelegramEmailBot.Services
     {
         private readonly string _filePath;
         private readonly object _lock = new();
-
-        // Ключ шифрования из EncryptionSettings; в production лучше брать ключ из защищённого источника.
         private readonly string _encryptionKey = EncryptionSettings.EncryptionKey;
 
         public CompanyListService(string filePath = "companies.csv")
         {
             _filePath = filePath;
-            // Если файла нет, создаем его с начальными данными (зашифрованными)
             if (!File.Exists(_filePath))
             {
                 var defaultCompanies = new List<string> { "Компания А", "Компания Б", "Компания В" };
-                var defaultEncrypted = defaultCompanies
-                    .Select(c => EncryptionHelper.EncryptString(c, _encryptionKey))
-                    .ToList();
-                File.WriteAllLines(_filePath, defaultEncrypted, Encoding.UTF8);
+                var encryptedLines = defaultCompanies.Select(c => EncryptionHelper.EncryptString(c, _encryptionKey)).ToList();
+                File.WriteAllLines(_filePath, encryptedLines, Encoding.UTF8);
             }
         }
 
@@ -39,26 +34,21 @@ namespace TelegramEmailBot.Services
                     var lines = File.ReadAllLines(_filePath, Encoding.UTF8);
                     var companies = new List<string>();
                     bool migrated = false;
-                    foreach (var line in lines.Where(line => !string.IsNullOrWhiteSpace(line)))
+                    foreach (var line in lines.Where(l => !string.IsNullOrWhiteSpace(l)))
                     {
                         try
                         {
-                            // Попытка дешифрования
                             string decrypted = EncryptionHelper.DecryptString(line, _encryptionKey);
                             companies.Add(decrypted);
                         }
                         catch (Exception)
                         {
-                            // Если дешифрование не удалось, значит запись хранится в открытом виде
                             companies.Add(line.Trim());
                             migrated = true;
                         }
                     }
-                    // Если обнаружены открытые записи, перезаписываем файл в зашифрованном виде
                     if (migrated)
-                    {
                         SaveCompanies(companies);
-                    }
                     return companies;
                 }
             }
@@ -73,9 +63,7 @@ namespace TelegramEmailBot.Services
         {
             try
             {
-                var linesToWrite = companies
-                    .Select(c => EncryptionHelper.EncryptString(c, _encryptionKey))
-                    .ToList();
+                var linesToWrite = companies.Select(c => EncryptionHelper.EncryptString(c, _encryptionKey)).ToList();
                 File.WriteAllLines(_filePath, linesToWrite, Encoding.UTF8);
             }
             catch (Exception ex)

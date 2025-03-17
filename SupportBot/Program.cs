@@ -28,6 +28,8 @@ namespace TelegramEmailBot
                     services.Configure<TelegramOptions>(configuration.GetSection("Telegram"));
                     services.Configure<EmailOptions>(configuration.GetSection("Email"));
                     services.Configure<Models.FileOptions>(configuration.GetSection("Files"));
+                    services.Configure<AccessOptions>(configuration.GetSection("Access"));
+
 
                     // Извлекаем токен с операцией null-forgiving:
                     string telegramToken = configuration.GetSection("Telegram").GetValue<string>("Token")!;

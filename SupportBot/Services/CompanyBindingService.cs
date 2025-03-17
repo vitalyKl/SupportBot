@@ -30,7 +30,7 @@ namespace TelegramEmailBot.Services
             {
                 var lines = File.ReadAllLines(_filePath, Encoding.UTF8);
                 bool migrated = false;
-                foreach (var line in lines.Where(line => !string.IsNullOrWhiteSpace(line)))
+                foreach (var line in lines.Where(l => !string.IsNullOrWhiteSpace(l)))
                 {
                     var parts = line.Split(';');
                     if (parts.Length < 2)
@@ -44,7 +44,6 @@ namespace TelegramEmailBot.Services
                         }
                         catch (Exception)
                         {
-                            // Если дешифрование провалилось, предполагаем, что данные открыты
                             company = parts[1].Trim();
                             migrated = true;
                         }
@@ -54,7 +53,6 @@ namespace TelegramEmailBot.Services
                         }
                     }
                 }
-                // Если найдены незашифрованные данные, перезапишем файл в зашифрованном виде
                 if (migrated)
                 {
                     SaveBindings();
