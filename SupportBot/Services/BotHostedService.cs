@@ -3,34 +3,24 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Telegram.Bot;
 using Telegram.Bot.Polling;
-using Telegram.Bot.Types.Enums;
-using TelegramEmailBot.Handlers;
 
 namespace TelegramEmailBot.Services
 {
-    public class BotHostedService : IHostedService
+    public class BotHostedService : BackgroundService
     {
         private readonly ITelegramBotClient _botClient;
-        private readonly MyUpdateHandler _updateHandler;
-        private CancellationTokenSource _cts = new();
+        private readonly IUpdateHandler _updateHandler;
 
-        public BotHostedService(ITelegramBotClient botClient, MyUpdateHandler updateHandler)
+        public BotHostedService(ITelegramBotClient botClient, IUpdateHandler updateHandler)
         {
             _botClient = botClient;
             _updateHandler = updateHandler;
         }
 
-        public Task StartAsync(CancellationToken cancellationToken)
+        protected override Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            var receiverOptions = new ReceiverOptions { AllowedUpdates = new[] { UpdateType.Message, UpdateType.CallbackQuery } };
-            _botClient.StartReceiving(_updateHandler, receiverOptions, _cts.Token);
-            return Task.CompletedTask;
-        }
-
-        public Task StopAsync(CancellationToken cancellationToken)
-        {
-            _cts.Cancel();
+            var receiverOptions = new ReceiverOptions { AllowedUpdates = { } };
+            _botClient.StartReceiving(_updateHandler, receiverOptions, stoppingToken);
             return Task.CompletedTask;
         }
     }
