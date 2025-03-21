@@ -1,75 +1,49 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Telegram.Bot;
-using TelegramEmailBot.Handlers;
-using TelegramEmailBot.Handlers.Commands;
-using TelegramEmailBot.Handlers.Keyboards;
-using TelegramEmailBot.Models;
-using TelegramEmailBot.Services;
-using TelegramEmailBot.Services.Security;
+using SupportBot.Core.Configurations;
+using SupportBot.Core.Interfaces.Core;
+using SupportBot.Core.Interfaces.Data;
+using SupportBot.Core.Interfaces.Security;
+using SupportBot.Core.Interfaces.Services;
+using SupportBot.Infrastructure;
+using SupportBot.Services;
 
-internal class Program
+namespace SupportBot
 {
-    public static async Task Main(string[] args)
+    public class Program
     {
-        var host = Host.CreateDefaultBuilder(args)
-            .ConfigureAppConfiguration((context, config) =>
-            {
-                config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-            })
-            .ConfigureServices((context, services) =>
-            {
-                var configuration = context.Configuration;
-
-                // Конфигурационные модели
-                services.Configure<AccessOptions>(configuration.GetSection("Access"));
-                services.Configure<TelegramOptions>(configuration.GetSection("Telegram"));
-                services.Configure<EmailOptions>(configuration.GetSection("Email"));
-                services.Configure<TelegramEmailBot.Models.FileOptions>(configuration.GetSection("Files"));
-
-                string telegramToken = configuration.GetSection("Telegram").GetValue<string>("Token")!;
-                services.AddSingleton<ITelegramBotClient>(new TelegramBotClient(telegramToken));
-                
-
-                var fileOptions = configuration.GetSection("Files").Get<TelegramEmailBot.Models.FileOptions>()!;
-                services.AddSingleton<CompanyBindingService>(sp => new CompanyBindingService(fileOptions.CompanyBindingsFile));
-                services.AddSingleton<CompanyListService>(sp => new CompanyListService(fileOptions.CompaniesFile));
-
-                int groupingDelaySeconds = configuration.GetValue<int>("GroupingDelaySeconds", 10);
-
-                services.AddSingleton<EmailSender>(sp =>
+        public static async Task Main(string[] args)
+        {
+            var host = Host.CreateDefaultBuilder(args)
+                .ConfigureAppConfiguration((hostingContext, config) =>
                 {
-                    var emailOptions = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmailOptions>>().Value;
-                    var bindingService = sp.GetRequiredService<CompanyBindingService>();
-                    return new EmailSender(emailOptions.GmailUser, emailOptions.GmailAppPassword, emailOptions.RecipientEmail, bindingService);
-                });
-                services.AddSingleton<EmailPipelineProcessor>();
-                services.AddSingleton<BindingEnricher>();
+                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                })
+                .ConfigureServices((context, services) =>
+                {
+                    // Регистрация настроек BotSettings из конфигурации.
+                    services.Configure<BotSettings>(context.Configuration.GetSection("BotSettings"));
 
-                // Генератор клавиатур
-                services.AddSingleton<KeyboardGenerator>();
+                    // Регистрация инфраструктурных сервисов.
+                    services.AddSingleton(typeof(ICsvRepository<>), typeof(CsvRepository<>));
+                    services.AddSingleton<IAesEncryptionService, AesEncryptionService>();
 
-                // Обработчики команд
-                services.AddSingleton<AdminCommandHandler>();
-                services.AddSingleton<BindCommandHandler>();
-                services.AddSingleton<UnbindCommandHandler>();
+                    // Регистрация сервисов бизнес-логики и Telegram.
+                    services.AddTransient<IBotService, BotService>();
+                    services.AddSingleton<ITelegramBotService, TelegramBotService>();
+                    services.AddSingleton<IBotPipeline, BotPipeline>();
+                })
+                .Build();
 
-                // Регистрация нового сервиса ProgressKeyboardService
-                services.AddSingleton<ProgressKeyboardService>();
+            var telegramService = host.Services.GetRequiredService<ITelegramBotService>();
+            await telegramService.StartAsync();
 
-                // Диспетчер команд/конвейера
-                services.AddSingleton<CommandDispatcher>();
+            var pipeline = host.Services.GetRequiredService<IBotPipeline>();
+            await pipeline.ExecuteAsync();
 
-                // Основной обработчик обновлений
-                services.AddSingleton<Telegram.Bot.Polling.IUpdateHandler, MyUpdateHandler>();
-
-                // Hosted service для запуска бота
-                services.AddHostedService<BotHostedService>();
-            })
-            .Build();
-
-        await host.RunAsync();
+            await host.RunAsync();
+        }
     }
 }
