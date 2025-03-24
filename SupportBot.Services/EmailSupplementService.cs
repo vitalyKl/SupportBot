@@ -12,6 +12,21 @@ namespace SupportBot.Services
 
         public void SupplementEmailMessage(string senderId, string senderUserName, string senderFirstName, string messageText, DateTime messageDate)
         {
+            var block = new EmailMessageBlock
+            {
+                Type = EmailMessageBlock.BlockType.Text,
+                Content = messageText
+            };
+            AppendBlock(senderId, senderUserName, senderFirstName, messageDate, block);
+        }
+
+        public void SupplementEmailMessageBlock(EmailMessageBlock block, string senderId, string senderUserName, string senderFirstName, DateTime messageDate)
+        {
+            AppendBlock(senderId, senderUserName, senderFirstName, messageDate, block);
+        }
+
+        private void AppendBlock(string senderId, string senderUserName, string senderFirstName, DateTime messageDate, EmailMessageBlock block)
+        {
             if (_emailMessage is null)
             {
                 _emailMessage = new EmailMessage
@@ -20,10 +35,14 @@ namespace SupportBot.Services
                     SenderUserName = senderUserName,
                     SenderFirstName = senderFirstName,
                     FirstMessageDate = messageDate,
-                    BoundCompany = string.Empty
+                    BoundCompany = string.Empty,
+                    Blocks = new List<EmailMessageBlock> { block }
                 };
             }
-            _emailMessage.MessageTexts.Add(messageText);
+            else
+            {
+                _emailMessage.Blocks.Add(block);
+            }
         }
 
         public EmailMessage? GetEmailMessage() => _emailMessage;

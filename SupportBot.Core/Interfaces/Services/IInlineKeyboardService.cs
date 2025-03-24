@@ -7,7 +7,6 @@ namespace SupportBot.Core.Interfaces.Services
     {
         InlineKeyboardMarkup GenerateConfirmationKeyboard();
         InlineKeyboardMarkup GenerateLetterKeyboard();
-        // Первый параметр теперь имеет тип char
         InlineKeyboardMarkup GenerateCompaniesKeyboard(char letter, IEnumerable<string> companies);
     }
 }

@@ -20,6 +20,7 @@ namespace SupportBot.Services
         private readonly IInlineKeyboardService _inlineKeyboardService;
         private readonly ICompanyBindingService _companyBindingService;
         private readonly ICompanyService _companyService;
+        // Флаг, указывающий, что для текущей группы сообщений уже отправлена inline-клавиатура
         private bool _keyboardSent = false;
 
         public TelegramBotService(
@@ -34,6 +35,7 @@ namespace SupportBot.Services
             var botToken = options.Value.BotToken;
             if (string.IsNullOrWhiteSpace(botToken))
                 throw new ArgumentException("Bot token is missing in configuration.");
+
             _botClient = new TelegramBotClient(botToken);
             _emailSupplementService = emailSupplementService;
             _emailSendingService = emailSendingService;
@@ -49,13 +51,13 @@ namespace SupportBot.Services
                 {
                     Console.WriteLine($"Получено обновление: {update.Type}");
 
-                    // --- Обработка команды /bind ---
+                    // Обработка команды /bind для ручной привязки компании
                     if (update.Type == UpdateType.Message &&
                         update.Message?.Text != null &&
                         update.Message.Text.StartsWith("/bind", StringComparison.OrdinalIgnoreCase))
                     {
                         var message = update.Message;
-                        string companyName = message.Text.Substring(5).Trim(); // текст после /bind
+                        string companyName = message.Text.Substring(5).Trim();
                         if (string.IsNullOrWhiteSpace(companyName))
                         {
                             await _botClient.SendMessage(
@@ -66,14 +68,10 @@ namespace SupportBot.Services
                         }
                         else
                         {
-                            // Добавляем компанию, если её ещё нет
                             _companyService.AddCompanyIfNotExists(companyName);
-
-                            // Определяем автора для привязки: если коллекция накопленных сообщений существует, берем оттуда SenderId, иначе message.From
+                            // Если уже накоплено сообщение, используем его SenderId, иначе берём из message.From
                             string authorId = _emailSupplementService.GetEmailMessage()?.SenderId ?? message.From!.Id.ToString();
-                            // Сохраняем привязку
                             _companyBindingService.SaveBinding(authorId, companyName);
-                            // Обновляем аккумулированный объект EmailMessage (если он существует)
                             _emailSupplementService.SetBoundCompany(companyName);
 
                             await _botClient.SendMessage(
@@ -81,7 +79,6 @@ namespace SupportBot.Services
                                 text: $"Компания '{companyName}' добавлена и привязана. Теперь вы можете отправить сообщение.",
                                 cancellationToken: cancellationToken
                             );
-                            // После команды /bind сразу отправляем клавиатуру подтверждения для накопленных пересланных сообщений.
                             var confirmationKeyboard = _inlineKeyboardService.GenerateConfirmationKeyboard();
                             await _botClient.SendMessage(
                                 chatId: message.Chat.Id,
@@ -93,8 +90,7 @@ namespace SupportBot.Services
                         }
                         return;
                     }
-                    // --- Конец обработки команды /bind ---
-
+                    // Обработка входящих сообщений
                     if (update.Type == UpdateType.Message)
                     {
                         var message = update.Message;
@@ -103,8 +99,7 @@ namespace SupportBot.Services
                             Console.WriteLine("Warning: message или message.Chat равны null.");
                             return;
                         }
-
-                        // Обработка пересланного сообщения (используем информацию только из ForwardOrigin)
+                        // Обрабатываем только пересланные сообщения – если ForwardOrigin заполнен
                         if (message.ForwardOrigin != null)
                         {
                             string senderId;
@@ -143,15 +138,47 @@ namespace SupportBot.Services
 
                             Console.WriteLine($"Обнаружено пересланное сообщение от {senderUserName} (ID: {senderId}).");
 
-                            _emailSupplementService.SupplementEmailMessage(
-                                senderId,
-                                senderUserName,
-                                senderFirstName,
-                                message.Text ?? "",
-                                message.Date
-                            );
+                            // Если сообщение содержит фото, создаём блок для фото.
+                            if (message.Photo != null && message.Photo.Length > 0)
+                            {
+                                var photo = message.Photo[^1]; // последнее фото (наибольшего размера)
+                                var photoBlock = new EmailMessageBlock
+                                {
+                                    Type = EmailMessageBlock.BlockType.Photo,
+                                    FileId = photo.FileId,
+                                    Content = "" // Подпись обрабатывается отдельно
+                                };
+                                _emailSupplementService.SupplementEmailMessageBlock(photoBlock, senderId, senderUserName, senderFirstName, message.Date);
+                                // Если у фото есть подпись, добавляем текстовый блок
+                                if (!string.IsNullOrWhiteSpace(message.Caption))
+                                {
+                                    _emailSupplementService.SupplementEmailMessage(senderId, senderUserName, senderFirstName, message.Caption, message.Date);
+                                }
+                            }
+                            // Если сообщение содержит документ (например, Word, PDF и т.д.)
+                            else if (message.Document != null)
+                            {
+                                var doc = message.Document;
+                                var docBlock = new EmailMessageBlock
+                                {
+                                    Type = EmailMessageBlock.BlockType.Document,
+                                    FileId = doc.FileId,
+                                    Content = doc.FileName // сохраняем имя файла
+                                };
+                                _emailSupplementService.SupplementEmailMessageBlock(docBlock, senderId, senderUserName, senderFirstName, message.Date);
+                                // Если у документа есть подпись (Caption), добавляем её как текстовый блок
+                                if (!string.IsNullOrWhiteSpace(message.Caption))
+                                {
+                                    _emailSupplementService.SupplementEmailMessage(senderId, senderUserName, senderFirstName, message.Caption, message.Date);
+                                }
+                            }
+                            else
+                            {
+                                // Обрабатываем как текстовое сообщение
+                                _emailSupplementService.SupplementEmailMessage(senderId, senderUserName, senderFirstName, message.Text ?? "", message.Date);
+                            }
 
-                            // Проверяем, существует ли привязка автора к компании.
+                            // После добавления блоков проверяем наличие привязки
                             var binding = _companyBindingService.GetBinding(senderId);
                             if (binding != null)
                             {
@@ -170,15 +197,18 @@ namespace SupportBot.Services
                             }
                             else
                             {
-                                // Если привязки нет – генерируем клавиатуру для выбора буквы, основываясь на наличии компаний
-                                var letterKeyboard = _inlineKeyboardService.GenerateLetterKeyboard();
-                                await _botClient.SendMessage(
-                                    chatId: message.Chat.Id,
-                                    text: "Ваш автор не привязан к компании. Выберите букву для поиска:",
-                                    replyMarkup: letterKeyboard,
-                                    cancellationToken: cancellationToken
-                                );
-                                _keyboardSent = true;
+                                if (!_keyboardSent)
+                                {
+                                    // Если нет привязки, выводим клавиатуру выбора буквы из имеющихся компаний
+                                    var letterKeyboard = _inlineKeyboardService.GenerateLetterKeyboard();
+                                    await _botClient.SendMessage(
+                                        chatId: message.Chat.Id,
+                                        text: "Ваш автор не привязан к компании. Выберите букву для поиска:",
+                                        replyMarkup: letterKeyboard,
+                                        cancellationToken: cancellationToken
+                                    );
+                                    _keyboardSent = true;
+                                }
                             }
                         }
                         else
